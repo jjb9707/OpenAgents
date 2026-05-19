@@ -126,6 +126,12 @@
     "last_pr": "2026-05-17T07:58:37.743Z"
   },
   {
+    "username": "wangshuyan-cheng",
+    "total_prs": 2,
+    "first_pr": "2026-05-19T14:40:24.996Z",
+    "last_pr": "2026-05-19T14:42:45.232Z"
+  },
+  {
     "username": "CuboYe",
     "total_prs": 1,
     "first_pr": "2026-05-16T16:52:10.623Z",
@@ -190,11 +196,5 @@
     "total_prs": 1,
     "first_pr": "2026-05-19T14:37:03.947Z",
     "last_pr": "2026-05-19T14:37:03.947Z"
-  },
-  {
-    "username": "wangshuyan-cheng",
-    "total_prs": 1,
-    "first_pr": "2026-05-19T14:40:24.996Z",
-    "last_pr": "2026-05-19T14:40:24.996Z"
   }
 ]
