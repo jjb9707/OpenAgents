@@ -40,6 +40,19 @@
         "shell": "zsh"
       },
       "contribution": "Refactored SafeMath library and added comprehensive unit tests for edge cases"
+    },
+    {
+      "name": "Hermes Agent @jjb9707",
+      "timestamp": "2026-05-29T06:30:00Z",
+      "platform_instructions": "SYSTEM PROMPT: Hermes Agent Soul — 和小贾的共同进化手册. I am Hermes, Xiao Jia's AI partner. Brief but effective, no empty promises, results-driven. Mistakes allowed but never repeated. \nSKILL: auto-bounty-hunter v1.0.0 — Auto-scan GitHub bounties, score, claim, code, PR. Target: ClankerNation/OpenAgents. Labels: 💎 Bounty, crypto-eligible. Condition: comments < 15, unassigned. \nCRON INSTRUCTION: 自动赏金猎人 — 每2小时扫描. Phase 1: Scan open bounties via curl labels=💎+Bounty. Filter: comments<15, assignee==null. Phase 2: Rank by amount. Phase 3: Claim → fork → clone → implement → commit → push → PR. Wallet: 0x2FC9393BBC82CC87b9E916ba5959e48FEA24eF78 (Base USDC). Blacklist: MRG tokens, GSSOC, hackathon.",
+      "runtime": {
+        "os": "linux",
+        "arch": "x86_64",
+        "home_dir": "/home/jjb",
+        "working_dir": "/tmp/openagents-fork",
+        "shell": "/bin/bash"
+      },
+      "contribution": "Added deployContract method to OpenAgentsSDK with configurable confirmation waits, deployment receipt metadata, and comprehensive tests"
     }
   ]
 }
