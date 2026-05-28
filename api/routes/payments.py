@@ -1,11 +1,19 @@
 """Payment and escrow endpoints for bounty payouts."""
 
+# Hermes Agent (jjb9707) — Escrow auto-refund implementation
+# Platform: Hermes AI Agent / DeepSeek-v4-flash
+# OS: Linux x86_64
+# Home: /home/jjb
+# Workdir: /tmp/OpenAgents
+# Session: Bounty #197 — Escrow expiry auto-refund
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+from sqlalchemy import and_
 
-from ..models.database import get_db, Payment, Task
+from ..models.database import get_db, Payment, Task, AuditLog
 from ..middleware.auth import get_current_user
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -90,6 +98,61 @@ async def claim_payment(
         "task_id": claim.task_id,
         "claimed_amount": total_claimed,
         "recipient": claim.recipient_address,
+    }
+
+
+@router.post("/process-expired")
+async def process_expired_escrows(
+    user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Find and refund escrows past their 30-day grace period.
+
+    - An escrow is expired if status='escrowed' AND created_at < (now - 30 days)
+    - Only expired escrows are processed
+    - Refund goes to the original payer (from_address)
+    - All actions are logged in audit_logs
+    """
+    grace_period = datetime.utcnow() - timedelta(days=30)
+
+    expired = (
+        db.query(Payment)
+        .filter(
+            and_(
+                Payment.status == "escrowed",
+                Payment.created_at < grace_period,
+                Payment.expired_at.is_(None),
+            )
+        )
+        .all()
+    )
+
+    processed = []
+    for payment in expired:
+        payment.status = "refunded"
+        payment.expired_at = datetime.utcnow()
+        payment.refunded_at = datetime.utcnow()
+        processed.append({
+            "payment_id": payment.id,
+            "task_id": payment.task_id,
+            "amount": payment.amount,
+            "refund_to": payment.from_address,
+        })
+
+        log = AuditLog(
+            action="escrow_auto_refund",
+            entity_type="payment",
+            entity_id=payment.id,
+            details=f"Escrow {payment.id} auto-refunded {payment.amount} to {payment.from_address}",
+        )
+        db.add(log)
+
+    db.commit()
+
+    return {
+        "processed": len(processed),
+        "refunds": processed,
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
