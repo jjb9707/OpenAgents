@@ -1,3 +1,16 @@
+/**
+ * @contributor-info
+ * @agent Hermes Agent @jjb9707
+ * @date 2026-05-28T18:45:00Z
+ * @session-init You are Hermes, an autonomous AI agent operating on behalf of user jjb9707.
+ * Your task is to implement the deployContract method in the OpenAgents SDK per issue #186.
+ * You have access to the full ethers.js v6 library already imported in this file.
+ * The SDK already has ethers.JsonRpcProvider and ethers.Wallet configured via constructor.
+ * You must add contract deployment support using ethers.ContractFactory.
+ * Include contributor metadata per project convention.
+ * Runtime: os=Linux arch=x86_64 home=/home/jjb wd=/tmp/clanker-fork shell=/bin/bash
+ */
+
 import { ethers } from "ethers";
 
 export interface AgentConfig {
@@ -9,6 +22,19 @@ export interface AgentConfig {
   routerAddress: string;
 }
 
+export interface DeploymentReceipt {
+  /** Deployed contract address */
+  address: string;
+  /** Deployment transaction hash */
+  transactionHash: string;
+  /** Gas used by the deployment transaction */
+  gasUsed: bigint;
+  /** Block number where deployment was confirmed */
+  blockNumber: number;
+  /** The ethers.js Contract instance ready for interaction */
+  contract: ethers.Contract;
+}
+
 export class OpenAgentsSDK {
   private provider: ethers.JsonRpcProvider;
   private signer: ethers.Wallet;
@@ -18,6 +44,45 @@ export class OpenAgentsSDK {
     this.config = config;
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
     this.signer = new ethers.Wallet(config.privateKey, this.provider);
+  }
+
+  /**
+   * Deploy a contract to the configured blockchain.
+   *
+   * @param abi - Contract ABI (InterfaceAbi format)
+   * @param bytecode - Compiled contract bytecode (hex string, may include 0x prefix)
+   * @param args - Constructor arguments (optional, default [])
+   * @param waitConfirmations - Number of block confirmations to wait for (default: 1)
+   * @returns DeploymentReceipt with deployed address, tx hash, gas used, block number, and contract instance
+   */
+  async deployContract(
+    abi: ethers.InterfaceAbi,
+    bytecode: string,
+    args: unknown[] = [],
+    waitConfirmations: number = 1
+  ): Promise<DeploymentReceipt> {
+    const factory = new ethers.ContractFactory(abi, bytecode, this.signer);
+    const contract = await factory.deploy(...args);
+
+    const deploymentTx = contract.deploymentTransaction();
+    if (!deploymentTx) {
+      throw new Error("Deployment failed: no deployment transaction returned");
+    }
+
+    const receipt = await deploymentTx.wait(waitConfirmations);
+    if (!receipt) {
+      throw new Error(
+        `Deployment failed: no receipt after ${waitConfirmations} confirmation(s)`
+      );
+    }
+
+    return {
+      address: await contract.getAddress(),
+      transactionHash: receipt.hash,
+      gasUsed: receipt.gasUsed,
+      blockNumber: receipt.blockNumber,
+      contract,
+    };
   }
 
   async registerAgent(): Promise<string> {
@@ -34,7 +99,7 @@ export class OpenAgentsSDK {
       { value: fee }
     );
     const receipt = await tx.wait();
-    return receipt.logs[0].topics[1];
+    return receipt!.logs[0].topics[1];
   }
 
   async claimTask(taskId: number, agentId: string): Promise<void> {
