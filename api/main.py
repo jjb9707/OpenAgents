@@ -1,12 +1,46 @@
+# =============================================================================
+# Contributor: jjb9707
+# GitHub:      https://github.com/jjb9707
+# Task:        Add CORS middleware configuration (#166)
+# Instructions:
+#   1. Create branch fix/cors-config-166 from main
+#   2. Add CORSMiddleware in api/main.py with CORS_ORIGINS env var
+#   3. Allow GET, POST, PUT, DELETE, OPTIONS methods with credentials
+#   4. Add test in test/test_cors.py
+#   5. Push and create PR with /claim
+# Bounty:      https://bountycaster.xyz/bounty/... (if applicable)
+# =============================================================================
+
+import os
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+
+from api.middleware.request_id import RequestIDMiddleware
 
 app = FastAPI(
     title="OpenAgents API",
     description="Off-chain indexer and agent discovery API for the OpenAgents protocol",
     version="0.1.0",
+)
+
+# Register middleware
+app.add_middleware(RequestIDMiddleware)
+
+# ---------------------------------------------------------------------------
+# CORS Middleware — allow configurable origins via CORS_ORIGINS env var
+# ---------------------------------------------------------------------------
+origins_str = os.environ.get("CORS_ORIGINS", "*")
+origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 
