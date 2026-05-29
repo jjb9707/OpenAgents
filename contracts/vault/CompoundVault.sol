@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+// @contributor: Hermes Agent @jjb9707
+// @date: 2026-05-29T04:15:00Z
+// @session-init: [REDACTED]
+// @runtime: os=Linux arch=x86_64 home=/home/jjb wd=/tmp/clanker-fork-110 shell=/bin/bash
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -20,6 +24,7 @@ contract CompoundVault is Ownable, ReentrancyGuard {
 
     uint256 public totalShares;
     uint256 public totalDeposited;
+    uint256 public totalLoss;
     uint256 public performanceFeeBps; // basis points (e.g., 1000 = 10%)
     uint256 public lastHarvestTime;
     uint256 public lastPricePerShare;
@@ -30,6 +35,7 @@ contract CompoundVault is Ownable, ReentrancyGuard {
     event Withdrawn(address indexed user, uint256 amount, uint256 shares);
     event Harvested(uint256 profit, uint256 fee, uint256 timestamp);
     event Compounded(uint256 amount, uint256 newPricePerShare);
+    event StrategyLoss(uint256 lossAmount);
 
     constructor(
         address _baseToken,
@@ -115,18 +121,46 @@ contract CompoundVault is Ownable, ReentrancyGuard {
     /// @notice Compound harvested rewards by converting and re-depositing.
     /// @dev In production this would swap rewardToken -> baseToken via a DEX.
     ///      Simplified here to direct deposit of reward token balance.
-    function compound() external onlyOwner {
+    function compound() external nonReentrant onlyOwner {
         uint256 rewardBalance = rewardToken.balanceOf(address(this));
-        if (rewardBalance == 0) return;
+        uint256 baseBalance = baseToken.balanceOf(address(this));
+        if (rewardBalance == 0 && baseBalance == 0) return;
 
-        // In a real implementation, this would swap via a DEX router.
-        // For this contract, we assume baseToken == rewardToken or an oracle price.
-        uint256 compoundAmount = (rewardBalance * lastPricePerShare) / 1e18;
+        // Record base token balance before strategy interaction
+        uint256 balanceBefore = baseToken.balanceOf(address(this));
 
-        totalDeposited += compoundAmount;
-        lastPricePerShare = totalShares > 0 ? (totalDeposited * 1e18) / totalShares : 1e18;
+        // Transfer all base tokens and reward tokens to the strategy for processing
+        if (baseBalance > 0) {
+            baseToken.safeTransfer(strategy, baseBalance);
+        }
+        if (rewardBalance > 0) {
+            rewardToken.safeTransfer(strategy, rewardBalance);
+        }
 
-        emit Compounded(compoundAmount, lastPricePerShare);
+        // Call strategy to perform the compound operation
+        (bool success, ) = strategy.call{gas: 100000}("");
+        require(success, "Vault: strategy call failed");
+
+        // Record base token balance after strategy interaction
+        uint256 balanceAfter = baseToken.balanceOf(address(this));
+
+        if (balanceAfter >= balanceBefore) {
+            // Positive or zero yield — increase totalDeposited
+            uint256 netReturn = balanceAfter - balanceBefore;
+            totalDeposited += netReturn;
+            lastPricePerShare = totalShares > 0 ? (totalDeposited * 1e18) / totalShares : 1e18;
+
+            emit Compounded(netReturn, lastPricePerShare);
+        } else {
+            // Negative yield — strategy suffered a loss
+            uint256 lossAmount = balanceBefore - balanceAfter;
+
+            totalLoss += lossAmount;
+            totalDeposited = totalDeposited > lossAmount ? totalDeposited - lossAmount : 0;
+            lastPricePerShare = totalShares > 0 ? (totalDeposited * 1e18) / totalShares : 1e18;
+
+            emit StrategyLoss(lossAmount);
+        }
     }
 
     /// @notice Update the performance fee.
