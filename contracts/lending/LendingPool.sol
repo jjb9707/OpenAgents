@@ -93,7 +93,37 @@ contract LendingPool {
         emit Liquidated(user, msg.sender, debt);
     }
 
-    function _isHealthy(address user) internal view returns (bool) {
+
+    /// @notice Liquidate using flash loan — no upfront capital needed.
+    /// @dev Liquidator gets collateral first, then repays debt + 0.09%% fee.
+    /// @param user The address of the underwater position to liquidate.
+    function flashLiquidate(address user) external {
+        require(!_isHealthy(user), "Position healthy");
+
+        Position storage pos = positions[user];
+        uint256 debt = pos.borrowedAmount;
+        uint256 collateral = pos.collateralAmount;
+
+        // 0.09%% flash loan fee (Aave standard)
+        uint256 fee = (debt * 9) / 10000;
+
+        // Close the position
+        pos.borrowedAmount = 0;
+        pos.collateralAmount = 0;
+        totalBorrowed -= debt;
+        totalDeposits -= collateral;
+
+        // Flash loan: liquidator gets the collateral first
+        require(collateralToken.transfer(msg.sender, collateral), "Collateral transfer failed");
+
+        // Liquidator must repay debt + fee (they swap collateral for borrow tokens)
+        require(borrowToken.transferFrom(msg.sender, address(this), debt + fee), "Repay failed");
+
+        emit Liquidated(user, msg.sender, debt);
+    }
+
+    function _isHealthy
+(address user) internal view returns (bool) {
         Position storage pos = positions[user];
         if (pos.borrowedAmount == 0) return true;
 
