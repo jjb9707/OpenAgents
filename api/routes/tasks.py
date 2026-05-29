@@ -1,3 +1,7 @@
+# @contributor: Hermes Agent @jjb9707
+# @date: 2026-05-29T03:18:45Z
+# @runtime: os=Linux arch=x86_64 home=/home/jjb wd=/tmp/clanker-fork-157 shell=/bin/bash
+
 """Task management endpoints for bounty assignments."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,10 +26,25 @@ class TaskCreate(BaseModel):
 
 
 class TaskStatusUpdate(BaseModel):
-    status: str  # BUG: Not validated against VALID_STATUSES enum — any string accepted
+    status: str  # BUG: Not validated against VALID_STATUSES enum -- any string accepted
 
 
-@router.post("/")
+@router.post(
+    "/",
+    summary="Create a new task",
+    description="Create a bounty task. Requires authentication.",
+    responses={
+        201: {"description": "Task created"},
+        401: {
+            "description": "Not authenticated",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error401Unauthorized"}
+                }
+            },
+        },
+    },
+)
 async def create_task(task: TaskCreate, user=Depends(get_current_user), db=Depends(get_db)):
     new_task = Task(
         title=task.title,
@@ -43,13 +62,16 @@ async def create_task(task: TaskCreate, user=Depends(get_current_user), db=Depen
     return {"id": new_task.id, "status": new_task.status}
 
 
-@router.get("/")
+@router.get(
+    "/",
+    summary="List all tasks",
+    description="List bounty tasks with optional status and creator filters.",
+)
 async def list_tasks(
     status: Optional[str] = None,
     creator: Optional[str] = None,
     skip: int = Query(0, ge=0),
-    # BUG: No upper bound on limit — clients can request millions of rows,
-    # causing DB strain and potential OOM
+    # BUG: No upper bound on limit -- clients can request millions of rows
     limit: int = Query(50, ge=1),
     db=Depends(get_db),
 ):
@@ -61,7 +83,21 @@ async def list_tasks(
     return query.order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
 
 
-@router.get("/{task_id}")
+@router.get(
+    "/{task_id}",
+    summary="Get task by ID",
+    description="Retrieve details of a specific task.",
+    responses={
+        404: {
+            "description": "Task not found",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error404NotFound"}
+                }
+            },
+        },
+    },
+)
 async def get_task(task_id: int, db=Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -69,7 +105,38 @@ async def get_task(task_id: int, db=Depends(get_db)):
     return task
 
 
-@router.patch("/{task_id}/status")
+@router.patch(
+    "/{task_id}/status",
+    summary="Update task status",
+    description="Update task status. Requires authentication and ownership.",
+    responses={
+        200: {"description": "Status updated"},
+        401: {
+            "description": "Not authenticated",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error401Unauthorized"}
+                }
+            },
+        },
+        403: {
+            "description": "Forbidden -- only creator can update",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error403Forbidden"}
+                }
+            },
+        },
+        404: {
+            "description": "Task not found",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error404NotFound"}
+                }
+            },
+        },
+    },
+)
 async def update_task_status(
     task_id: int,
     update: TaskStatusUpdate,
@@ -80,7 +147,7 @@ async def update_task_status(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # BUG: Creator can mark their own task as completed — should require
+    # BUG: Creator can mark their own task as completed -- should require
     # a third party or the assignee to confirm completion
     if task.creator_id != user["id"]:
         raise HTTPException(status_code=403, detail="Only the creator can update status")
@@ -91,7 +158,46 @@ async def update_task_status(
     return {"id": task.id, "status": task.status}
 
 
-@router.delete("/{task_id}")
+@router.delete(
+    "/{task_id}",
+    summary="Cancel task",
+    description="Cancel an open or assigned task. Requires authentication and ownership.",
+    responses={
+        200: {"description": "Task cancelled"},
+        400: {
+            "description": "Cannot cancel active/in-progress task",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error400BadRequest"}
+                }
+            },
+        },
+        401: {
+            "description": "Not authenticated",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error401Unauthorized"}
+                }
+            },
+        },
+        403: {
+            "description": "Forbidden -- only creator can cancel",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error403Forbidden"}
+                }
+            },
+        },
+        404: {
+            "description": "Task not found",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Error404NotFound"}
+                }
+            },
+        },
+    },
+)
 async def cancel_task(task_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
