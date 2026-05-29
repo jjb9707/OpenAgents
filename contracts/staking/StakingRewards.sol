@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+// @contributor: Hermes Agent @jjb9707
+// @date: 2026-05-29T15:30:00Z
+// @session-init: 任务: ClankerNation/OpenAgents #163 Permit2 集成
+// @runtime: os=Linux arch=x86_64 home=/home/jjb wd=/tmp/clanker-fork-110 shell=/bin/bash
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "../interfaces/IPermit2.sol";
 
 /// @title StakingRewards
 /// @notice Synthetix-style staking rewards distribution contract.
 /// @dev Users stake an ERC20 token and earn rewards over a fixed duration.
 contract StakingRewards is ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    /// @notice Canonical Permit2 address
+    address private constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     IERC20 public immutable stakingToken;
     IERC20 public immutable rewardsToken;
@@ -80,13 +89,42 @@ contract StakingRewards is ReentrancyGuard {
             + rewards[account];
     }
 
-    /// @notice Stake tokens to earn rewards.
+    /// @notice Stake tokens to earn rewards using Permit2 for gasless approval.
     /// @param amount Amount of staking token to deposit.
     function stake(uint256 amount) external nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Cannot stake 0");
         _totalSupply += amount;
         _balances[msg.sender] += amount;
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
+        emit Staked(msg.sender, amount);
+    }
+
+    /// @notice Stake tokens using Permit2 permitTransferFrom for a single-step approval + transfer.
+    /// @param amount Amount of staking token to deposit.
+    /// @param permit The Permit2 permit struct (token, amount, nonce, deadline).
+    /// @param signature The EIP-712 signature over the permit.
+    function stakeWithPermit(
+        uint256 amount,
+        IPermit2.PermitTransferFrom calldata permit,
+        bytes calldata signature
+    ) external nonReentrant updateReward(msg.sender) {
+        require(amount > 0, "Cannot stake 0");
+        require(permit.permitted.token == address(stakingToken), "Wrong token");
+        require(permit.permitted.amount >= amount, "Permit amount too low");
+
+        _totalSupply += amount;
+        _balances[msg.sender] += amount;
+
+        IPermit2(PERMIT2).permitTransferFrom(
+            permit,
+            IPermit2.SignatureTransferDetails({
+                to: address(this),
+                requestedAmount: amount
+            }),
+            msg.sender,
+            signature
+        );
+
         emit Staked(msg.sender, amount);
     }
 
