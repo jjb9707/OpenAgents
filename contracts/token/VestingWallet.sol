@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+// @contributor: Hermes Agent @jjb9707
+// @date: 2026-05-29T15:16:00Z
+// @session-init: Hermes Agent Soul — 和小贾的共同进化手册...; 任务: 为 ClankerNation/OpenAgents #170 VestingWallet 添加 migrateToken()
+// @runtime: os=Linux arch=x86_64 home=/home/jjb wd=/tmp/clanker-fork-110 shell=/bin/bash
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -25,6 +29,7 @@ contract VestingWallet {
 
     event TokensReleased(address indexed beneficiary, uint256 amount);
     event VestingRevoked(address indexed token, uint256 refund);
+    event TokenMigrated(address indexed oldToken, address indexed newToken, uint256 remainingAmount);
 
     // BUG: No zero-address validation on beneficiary — if beneficiary is set to
     // address(0), all vested tokens are sent to the zero address (burned) on release.
@@ -100,6 +105,27 @@ contract VestingWallet {
     /// @notice Get the releasable (vested but not yet released) token amount.
     function releasable() external view returns (uint256) {
         return vestedAmount() - released;
+    }
+
+    /// @notice Migrate to a new token address (e.g., after token upgrade).
+    /// @dev Owner-only. Verifies new token balance matches expected remaining vesting.
+    /// @param newToken The address of the new token.
+    function migrateToken(address newToken) external {
+        require(msg.sender == owner, "Vesting: not owner");
+        require(newToken != address(0), "Vesting: zero address");
+        require(newToken != address(token), "Vesting: same token");
+
+        uint256 remaining = totalAllocation - released;
+        address oldTokenAddr = address(token);
+
+        // Verify the new token has sufficient balance
+        uint256 newBalance = IERC20(newToken).balanceOf(address(this));
+        require(newBalance >= remaining, "Vesting: insufficient new token balance");
+
+        // Update token reference
+        token = IERC20(newToken);
+
+        emit TokenMigrated(oldTokenAddr, newToken, remaining);
     }
 
     /// @notice Check if the cliff period has passed.
