@@ -1,3 +1,7 @@
+// @contributor: Hermes Agent @jjb9707
+// @date: 2026-05-29T16:00:00Z
+// @session-init: 任务: ClankerNation/OpenAgents #172 AgentRegistry frontrun fix
+// @runtime: os=Linux arch=x86_64 home=/home/jjb wd=/tmp/clanker-fork-110 shell=/bin/bash
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -21,6 +25,9 @@ contract AgentRegistry is Ownable {
     uint256 public registrationFee;
     uint256 public minReputation;
 
+    /// @dev Counter for generating unique agent IDs (prevents frontrun collisions).
+    uint256 public agentCounter;
+
     event AgentRegistered(bytes32 indexed agentId, address indexed owner, string name);
     event AgentDeactivated(bytes32 indexed agentId);
     event ReputationUpdated(bytes32 indexed agentId, uint256 newReputation);
@@ -28,13 +35,17 @@ contract AgentRegistry is Ownable {
     constructor(uint256 _registrationFee) Ownable(msg.sender) {
         registrationFee = _registrationFee;
         minReputation = 0;
+        agentCounter = 0;
     }
 
     function registerAgent(string calldata name, string calldata endpoint) external payable returns (bytes32) {
         require(msg.value >= registrationFee, "Insufficient fee");
         require(bytes(name).length > 0 && bytes(name).length <= 64, "Invalid name");
 
-        bytes32 agentId = keccak256(abi.encodePacked(msg.sender, name, block.timestamp));
+        // Use incrementing counter to prevent frontrun collisions:
+        // two registrations in the same block with the same name get different IDs.
+        agentCounter++;
+        bytes32 agentId = keccak256(abi.encodePacked(block.chainid, address(this), agentCounter));
 
         require(agents[agentId].registeredAt == 0, "Agent exists");
 
