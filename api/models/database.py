@@ -45,6 +45,7 @@ class Agent(Base):
     model_type = Column(String(32), default="gpt-4")
     config = Column(JSON, default=dict)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    endpoint_url = Column(String(2048), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # BUG: No cascade delete — deleting a user leaves orphaned agents
@@ -96,6 +97,12 @@ class AuditLog(Base):
     action = Column(String(64), nullable=False)
     entity_type = Column(String(32), nullable=False)
     entity_id = Column(Integer, nullable=True)
+    actor_id = Column(Integer, nullable=True)
+    actor_address = Column(String(42), nullable=True)
+    actor_username = Column(String(64), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    before_value = Column(Text, nullable=True)
+    after_value = Column(Text, nullable=True)
     details = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
